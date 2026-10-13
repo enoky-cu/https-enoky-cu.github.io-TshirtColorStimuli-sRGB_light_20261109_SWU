@@ -1,0 +1,428 @@
+<!DOCTYPE html> 
+<!-- Average Skin Tone -->
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MetaHuman Complexion Experiment System (6-Color Batch Adjustment - LAB Modulation)</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #1a1a1a; color: #ffffff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        
+        .wrapper { width: 1020px; text-align: center; padding: 10px; box-sizing: border-box; }
+        h2 { font-size: 22px; margin: 0 0 5px 0; letter-spacing: 1px; }
+        .subtitle { font-size: 13px; color: #aaaaaa; margin: 0 0 20px 0; }
+        
+        .multi-image-view {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin: 0 auto 25px auto;
+            width: 100%;
+        }
+
+        .image-container {
+            position: relative; width: 320px; height: 251px;
+            border: 2px solid #333333; background-color: #2a2a2a; overflow: hidden; border-radius: 4px;
+        }
+        .image-label {
+            position: absolute; top: 5px; left: 5px; z-index: 10;
+            background: rgba(0,0,0,0.6); padding: 2px 6px; font-size: 11px; border-radius: 3px; color: #ccc;
+        }
+
+        /* 【1. Base Layer】Face base image */
+        .base-image { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: 1; pointer-events: none; 
+        }
+        
+        /* 【2. Overlay Layer】Canvas for real-time color synthesis */
+        .color-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: 2; pointer-events: none; 
+        }
+
+        /* Hidden Mask Image */
+        .hidden-mask { display: none; }
+
+        .control-panel { width: 450px; margin: 0 auto; background: #252525; padding: 20px; border-radius: 8px; box-sizing: border-box; }
+        
+        /* Color Selector & Status Lamp Styles */
+        .color-selector-wrapper { display: flex; flex-direction: column; margin-bottom: 20px; gap: 4px; }
+        .color-selector { display: flex; justify-content: space-between; gap: 6px; }
+        .color-btn-container { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .color-btn { width: 100%; height: 35px; border: 2px solid #444; border-radius: 4px; cursor: pointer; transition: all 0.2s; outline: none; }
+        .color-btn.active { border-color: #ffffff; transform: scale(1.05); box-shadow: 0 0 8px rgba(255,255,255,0.5); }
+        .status-dot { font-size: 9px; color: #555555; transition: color 0.2s; white-space: nowrap; }
+        .status-dot.active { color: #00ffcc; } 
+        .status-dot.saved { color: #ffaa00; }  
+
+        .slider-group { margin-bottom: 18px; text-align: left; }
+        .slider-labels { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+        
+        .label-blue { color: #5dade2; font-weight: bold; }
+        .label-yellow { color: #f4d03f; font-weight: bold; }
+        .label-dark { color: #95a5a6; font-weight: bold; }
+        .label-bright { color: #eb984e; font-weight: bold; }
+        .label-vivid { color: #e74c3c; font-weight: bold; }
+        .label-muted { color: #bdc3c7; font-weight: bold; }
+
+        input[type="range"] { width: 100%; -webkit-appearance: none; background: #444444; height: 6px; border-radius: 3px; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; cursor: pointer; }
+        
+        .guide-text { font-size: 11px; color: #aaaaaa; margin-top: 10px; margin-bottom: 2px; }
+        .submit-btn { width: 100%; padding: 12px; background-color: #27ae60; border: none; border-radius: 4px; color: #ffffff; font-size: 15px; font-weight: bold; cursor: pointer; }
+        .submit-btn:disabled { background-color: #444444; color: #888888; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <h2>Acceptable Color Range</h2>
+        <div class="subtitle">Please adjust the sliders for each of the 6 base colors to find the most suitable color.</div>
+
+        <div class="multi-image-view">
+            <div class="image-container">
+                <span class="image-label">Right View</span>
+                <img src="LightL_Tout.png" class="base-image" alt="" onerror="this.style.display='none';">
+                <img src="LightL_Tonly.png" class="hidden-mask" id="mask-left" alt="">
+                <canvas class="color-overlay" id="canvas-left" width="320" height="251"></canvas>
+            </div>
+
+            <div class="image-container">
+                <span class="image-label">Front View</span>
+                <img src="LightF_Tout.png" class="base-image" alt="" onerror="this.style.display='none';">
+                <img src="LightF_Tonly.png" class="hidden-mask" id="mask-base" alt="">
+                <canvas class="color-overlay" id="canvas-base" width="320" height="251"></canvas>
+            </div>
+
+            <div class="image-container">
+                <span class="image-label">Left View</span>
+                <img src="LightR_Tout.png" class="base-image" alt="" onerror="this.style.display='none';">
+                <img src="LightR_Tonly.png" class="hidden-mask" id="mask-right" alt="">
+                <canvas class="color-overlay" id="canvas-right" width="320" height="251"></canvas>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="color-selector-wrapper">
+                <div class="color-selector">
+                    <div class="color-btn-container">
+                        <button class="color-btn active" data-color="Red" style="background-color: lab(50% 42.68 14.23);"></button>
+                        <span class="status-dot active" id="dot-Red">● Adjusting</span>
+                    </div>
+                    <div class="color-btn-container">
+                        <button class="color-btn" data-color="Yellow" style="background-color: lab(50% -5.18 31.06);"></button>
+                        <span class="status-dot" id="dot-Yellow">● Pending</span>
+                    </div>
+                    <div class="color-btn-container">
+                        <button class="color-btn" data-color="Green" style="background-color: lab(50% -22.50 9.37);"></button>
+                        <span class="status-dot" id="dot-Green">● Pending</span>
+                    </div>
+                    <div class="color-btn-container">
+                        <button class="color-btn" data-color="Blue" style="background-color: lab(50% -6.02 -18.05);"></button>
+                        <span class="status-dot" id="dot-Blue">● Pending</span>
+                    </div>
+                    <div class="color-btn-container">
+                        <button class="color-btn" data-color="Purple" style="background-color: lab(50% 36.85 -36.85);"></button>
+                        <span class="status-dot" id="dot-Purple">● Pending</span>
+                    </div>
+                    <div class="color-btn-container">
+                        <button class="color-btn" data-color="Grey" style="background-color: lab(50% 0 0);"></button>
+                        <span class="status-dot" id="dot-Grey">● Pending</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-labels">
+                    <span class="label-blue">■ Bluish (Cool)</span>
+                    <span class="label-yellow">Yellowish (Warm) ■</span>
+                </div>
+                <input type="range" id="slider-tone" min="-3" max="3" step="1" value="0">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-labels">
+                    <span class="label-dark">■ Darker</span>
+                    <span class="label-bright">Lighter ■</span>
+                </div>
+                <input type="range" id="slider-brightness" min="-3" max="3" step="1" value="0">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-labels">
+                    <span class="label-muted">■ Muted（Low Chroma）</span>
+                    <span class="label-vivid">Vivid（High Chroma） ■</span>
+                </div>
+                <input type="range" id="slider-chroma" min="-3" max="3" step="1" value="0">
+            </div>
+
+            <div class="guide-text" id="guide-text">Please review and adjust all 6 colors before submitting.</div>
+            <button class="submit-btn" id="btn-submit" disabled>Submit All 6 Color Results</button>
+        </div>
+    </div>
+
+    <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
+
+    <script>
+        // =========================================================================
+        // 1. 各色の基準プロファイル (Python実測スケールと完全一致)
+        // =========================================================================
+        const BASE_PROFILES = {
+            Red:    { L_base: 50.0, a_unit:  3.0, b_unit:  1.0,  tone_dir:  1.0, scale: 1.42265 },
+            Yellow: { L_base: 50.0, a_unit: -0.5, b_unit:  3.0,  tone_dir: -1.0, scale: 1.03532 },
+            Green:  { L_base: 50.0, a_unit: -3.0, b_unit:  1.25, tone_dir: -1.0, scale: 0.74987 },
+            Blue:   { L_base: 50.0, a_unit: -1.0, b_unit: -3.0,  tone_dir: -1.0, scale: 0.60176 },
+            Purple: { L_base: 50.0, a_unit:  2.5, b_unit: -2.5,  tone_dir:  1.0, scale: 1.47381 },
+            Grey:   { L_base: 50.0, a_unit:  0.0, b_unit:  0.0,  tone_dir:  0.0, scale: 1.00000 }
+        };
+
+        const experimentData = {
+            Red:    { tone: 0, brightness: 0, chroma: 0, visited: true },
+            Yellow: { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Green:  { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Blue:   { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Purple: { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Grey:   { tone: 0, brightness: 0, chroma: 0, visited: false }
+        };
+
+        let currentBaseColor = 'Red';
+
+        const sliderTone = document.getElementById('slider-tone');
+        const sliderBrightness = document.getElementById('slider-brightness');
+        const sliderChroma = document.getElementById('slider-chroma');
+        
+        const canvases = [
+            { target: document.getElementById('canvas-left'), mask: document.getElementById('mask-left') },
+            { target: document.getElementById('canvas-base'), mask: document.getElementById('mask-base') },
+            { target: document.getElementById('canvas-right'), mask: document.getElementById('mask-right') }
+        ];
+
+        const btnSubmit = document.getElementById('btn-submit');
+        const colorBtns = document.querySelectorAll('.color-btn');
+
+        // =========================================================================
+        // 2. 測色変換関数 (CIE D65 2° -> sRGB IEC 61966-2-1 規格完全準拠)
+        // =========================================================================
+        
+        // CIELAB -> XYZ (D65光源: Xn=95.047, Yn=100.0, Zn=108.883)
+        function labToXyz(L, a, b) {
+            const Xn = 95.047, Yn = 100.0, Zn = 108.883;
+            const delta = 6.0 / 29.0;
+            const deltaSq = delta * delta;
+
+            const fy = (L + 16.0) / 116.0;
+            const fx = a / 500.0 + fy;
+            const fz = fy - b / 200.0;
+
+            const fInv = t => (t > delta) ? Math.pow(t, 3) : 3.0 * deltaSq * (t - 4.0 / 29.0);
+
+            return [Xn * fInv(fx), Yn * fInv(fy), Zn * fInv(fz)];
+        }
+
+        // XYZ -> sRGB (0-255 クランプ対応)
+        function xyzToRgb(X, Y, Z) {
+            const x = X / 100.0;
+            const y = Y / 100.0;
+            const z = Z / 100.0;
+
+            const r_lin =  3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+            const g_lin = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
+            const b_lin =  0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+
+            const gamma = c => (c <= 0.0031308) 
+                ? 12.92 * c 
+                : (1.055 * Math.pow(Math.max(0, c), 1.0 / 2.4) - 0.055);
+
+            return [
+                Math.max(0, Math.min(255, Math.round(gamma(r_lin) * 255.0))),
+                Math.max(0, Math.min(255, Math.round(gamma(g_lin) * 255.0))),
+                Math.max(0, Math.min(255, Math.round(gamma(b_lin) * 255.0)))
+            ];
+        }
+
+        // =========================================================================
+        // 3. 状態管理
+        // =========================================================================
+
+        function updateStatusDots() {
+            Object.keys(experimentData).forEach(color => {
+                const dot = document.getElementById(`dot-${color}`);
+                if (color === currentBaseColor) {
+                    dot.className = 'status-dot active';
+                    dot.innerText = '● Adjusting';
+                } else if (experimentData[color].visited) {
+                    dot.className = 'status-dot saved';
+                    dot.innerText = '● Saved';
+                } else {
+                    dot.className = 'status-dot';
+                    dot.innerText = '● Pending';
+                }
+            });
+
+            const allVisited = Object.values(experimentData).every(d => d.visited);
+            if (allVisited) {
+                btnSubmit.disabled = false;
+                document.getElementById('guide-text').innerText = 'All 6 colors have been adjusted. Ready to submit.';
+                document.getElementById('guide-text').style.color = '#2ecc71';
+            }
+        }
+
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                saveCurrentSliderValues();
+
+                colorBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                currentBaseColor = btn.getAttribute('data-color');
+                experimentData[currentBaseColor].visited = true;
+
+                sliderTone.value = experimentData[currentBaseColor].tone;
+                sliderBrightness.value = experimentData[currentBaseColor].brightness;
+                sliderChroma.value = experimentData[currentBaseColor].chroma;
+                
+                updateStatusDots();
+                updateColor();
+            });
+        });
+
+        function saveCurrentSliderValues() {
+            experimentData[currentBaseColor].tone = parseInt(sliderTone.value);
+            experimentData[currentBaseColor].brightness = parseInt(sliderBrightness.value);
+            experimentData[currentBaseColor].chroma = parseInt(sliderChroma.value);
+        }
+
+        // =========================================================================
+        // 4. 動的色変調処理 (Pythonの calc_color と完全一致)
+        // =========================================================================
+        function updateColor() {
+            const toneVal = parseInt(sliderTone.value);          
+            const brightnessVal = parseInt(sliderBrightness.value);  
+            const chromaVal = parseInt(sliderChroma.value); 
+
+            const prof = BASE_PROFILES[currentBaseColor];
+
+            // 1. Brightness変調 (L*: 1段階につき ±4.0)
+            const L = prof.L_base + brightnessVal * 4.0;
+
+            let a = 0.0, b = 0.0;
+
+            if (prof.a_unit === 0.0 && prof.b_unit === 0.0) {
+                // Grey: 彩度0固定、Toneスライダーで b* を ±1.0 ずつ加減算
+                a = 0.0;
+                b = toneVal * 1.0;
+            } else {
+                // 有彩色:
+                // 2. Chroma変調 (baseChromaMult = 10.0 + c_step * 1.5)
+                const baseChromaMult = 10.0 + chromaVal * 1.5;
+                const a_c = prof.a_unit * prof.scale * baseChromaMult;
+                const b_c = prof.b_unit * prof.scale * baseChromaMult;
+
+                const C_val = Math.sqrt(a_c * a_c + b_c * b_c);
+                const h_rad = Math.atan2(b_c, a_c);
+
+                // 3. Tone変調 (1段階につき ±2.0度回転)
+                const delta_h_rad = (toneVal * prof.tone_dir * 2.0) * Math.PI / 180.0;
+                const h_new_rad = h_rad + delta_h_rad;
+
+                a = C_val * Math.cos(h_new_rad);
+                b = C_val * Math.sin(h_new_rad);
+            }
+
+            // 4. CIELAB -> sRGB
+            const newXyz = labToXyz(L, a, b);
+            const rgb = xyzToRgb(newXyz[0], newXyz[1], newXyz[2]);
+            
+            const r = rgb[0];
+            const g = rgb[1];
+            const b_val = rgb[2];
+
+            // Canvas描画
+            canvases.forEach(obj => {
+                const ctx = obj.target.getContext('2d');
+                ctx.clearRect(0, 0, obj.target.width, obj.target.height);
+                
+                if (obj.mask && obj.mask.complete && obj.mask.naturalWidth !== 0) {
+                    ctx.drawImage(obj.mask, 0, 0, obj.target.width, obj.target.height);
+                    
+                    ctx.globalCompositeOperation = 'source-in';
+                    ctx.fillStyle = `rgb(${r}, ${g}, ${b_val})`;
+                    ctx.fillRect(0, 0, obj.target.width, obj.target.height);
+                    
+                    ctx.globalCompositeOperation = 'multiply';
+                    ctx.drawImage(obj.mask, 0, 0, obj.target.width, obj.target.height);
+                    
+                    ctx.globalCompositeOperation = 'source-over';
+                }
+            });
+        }
+
+        sliderTone.addEventListener('input', () => { saveCurrentSliderValues(); updateColor(); });
+        sliderBrightness.addEventListener('input', () => { saveCurrentSliderValues(); updateColor(); });
+        sliderChroma.addEventListener('input', () => { saveCurrentSliderValues(); updateColor(); });
+
+        window.addEventListener('load', () => { setTimeout(updateColor, 100); });
+        canvases.forEach(obj => { 
+            if (obj.mask) {
+                obj.mask.addEventListener('load', updateColor);
+            }
+        });
+
+        // 初期描画実行
+        updateColor(); 
+
+        // =========================================================================
+        // 5. データ送信 (Google Forms)
+        // =========================================================================
+        btnSubmit.addEventListener('click', () => {
+            saveCurrentSliderValues();
+
+            const subjectId = prompt("Please enter Participant / Subject ID:", "SUB001");
+            if (!subjectId) return; 
+
+            const form = document.createElement('form');
+            form.action = 'https://docs.google.com/forms/d/e/1FAIpQLScBQGOre4OgYXLAkQpWZkZ0EuANLrO-NZVczrVQ6sepWy0iBg/formResponse'; 
+            form.method = 'POST';
+            form.target = 'hidden_iframe'; 
+
+            const data = {
+                'entry.595584923': subjectId,
+                'entry.2086807986': experimentData.Red.tone,
+                'entry.1142973013': experimentData.Red.brightness,
+                'entry.1337946052': experimentData.Red.chroma,
+                'entry.1850883758': experimentData.Yellow.tone,
+                'entry.1618931469': experimentData.Yellow.brightness,
+                'entry.1563211256': experimentData.Yellow.chroma,
+                'entry.1962435276': experimentData.Green.tone,
+                'entry.490877653': experimentData.Green.brightness,
+                'entry.265959553': experimentData.Green.chroma,
+                'entry.1553293052': experimentData.Blue.tone,
+                'entry.1663261293': experimentData.Blue.brightness,
+                'entry.1563660912': experimentData.Blue.chroma,
+                'entry.1403758792': experimentData.Purple.tone,
+                'entry.2042718259': experimentData.Purple.brightness,
+                'entry.1279091193': experimentData.Purple.chroma,
+                'entry.1596853105': experimentData.Grey.tone,       
+                'entry.1108198676': experimentData.Grey.brightness, 
+                'entry.343306868': experimentData.Grey.chroma,     
+            };
+
+            for (const key in data) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = data[key];
+                form.appendChild(input);
+            }
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+            alert(`Experiment data for all 6 colors has been submitted successfully!\nSubject ID: ${subjectId}`);
+        });
+    </script>
+</body>
+</html>
